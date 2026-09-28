@@ -25,39 +25,40 @@ dependencies, so it runs in an air-gapped network as a single binary.
   every line's UTC time sits within a minute of the lines around it, so a
   vendor read in the wrong time zone cannot slip through.
 
-## Measured
-
-On a 2-core Intel Xeon at 2.1 GHz (cloud VM), one million lines, 411 MB, all
-eight formats mixed (`tools/gen_corpus.py`, seeded, vendor-documented layouts
-with random values; a benchmark corpus, not captured traffic):
-
-| | result |
-|---|---|
-| parse + normalise, 1 core | **1,505,807 events/s** |
-| parse + normalise + OCSF JSON, 1 core | **486,097 events/s** |
-| parse + normalise + OCSF JSON, 2 cores | **1,000,274 events/s** |
-| per-event latency, 1 core (p50 / p99 / p99.9) | **1.97 / 5.72 / 25.4 µs** |
-| lines fully parsed | **100%** (1,000,000 of 1,000,000) |
-| field values checked to be views into their raw line | 22,052,126, **0 outside** |
-| timestamps off one shared UTC time line (8 clock conventions) | **0** of 1,000,000 |
-| same corpus, Python regex + json pipeline, 1 core | 48,416 events/s |
-| file in, OCSF out (to /dev/null), 2 cores | 2.0 s per million events |
-
-Writing the 1.52 GB of OCSF JSON to this VM's disk takes longer than producing
-it: the engine is not the bottleneck, storage is.
+## Build and reproduce
 
 ```bash
 cmake -S . -B build -G Ninja && cmake --build build
 python3 tools/gen_corpus.py --lines 1000000 --out corpus.log
-build/lipi verify corpus.log
-build/lipi bench corpus.log --threads=1 --parse-only
-build/lipi bench corpus.log --threads=2
-build/lipi latency corpus.log
-build/lipi normalize corpus.log --out=corpus.ocsf.json
-python3 tools/baseline_python.py corpus.log --lines 200000
 ```
 
-Raw outputs are in `bench/results/`.
+Every figure below comes from the command in its row. The raw outputs of our
+runs are in `bench/results/`.
+
+## Measured
+
+On a 2-core Intel Xeon at 2.1 GHz (cloud VM), one million lines, 411 MB, all
+eight formats mixed (`tools/gen_corpus.py`, seeded, vendor-documented layouts
+with random values; a benchmark corpus, not captured traffic). Throughput is
+the best of 3 runs after a warm-up run. OCSF JSON is generated into a reused
+buffer, so the speed of the disk is not part of these figures.
+
+| measurement | result | command |
+|---|---|---|
+| parse + normalise, 1 core | **1,505,807 events/s** | `build/lipi bench corpus.log --threads=1 --parse-only` |
+| parse + normalise + OCSF JSON, 1 core | **486,097 events/s** | `build/lipi bench corpus.log --threads=1` |
+| parse + normalise + OCSF JSON, 2 cores | **1,000,274 events/s** | `build/lipi bench corpus.log --threads=2` |
+| raw logs read, OCSF JSON generated, 2 cores | **411 MB/s** in, **1,521 MB/s** out | `build/lipi bench corpus.log --threads=2` |
+| per-event latency, 1 core (p50 / p99 / p99.9) | **1.97 / 5.72 / 25.4 µs** | `build/lipi latency corpus.log --sample=300000` |
+| lines fully parsed | **100%** (1,000,000 of 1,000,000) | `build/lipi verify corpus.log` |
+| field values checked to be views into their raw line | 22,052,126, **0 outside** | `build/lipi verify corpus.log` |
+| timestamps off one shared UTC time line (8 clock conventions) | **0** of 1,000,000 | `build/lipi verify corpus.log` |
+| same corpus, Python regex + json pipeline, 1 core | 48,416 events/s | `python3 tools/baseline_python.py corpus.log --lines 200000` |
+
+`build/lipi normalize corpus.log --out=corpus.ocsf.json` writes the OCSF
+events to a file. It holds the whole output in memory before writing, so it is
+a convenience rather than a benchmark; on this VM, writing the 1.52 GB of OCSF
+JSON to disk takes longer than producing it.
 
 ## Not built yet
 
@@ -68,3 +69,7 @@ not the prototype. The idea deck marks each as planned.
 ## Team
 
 Team_Vertex_, Indian Institute of Technology Kharagpur.
+
+## License
+
+Apache License 2.0; see [LICENSE](LICENSE).
