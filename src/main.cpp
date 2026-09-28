@@ -7,7 +7,9 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstdint>
 #include <cstring>
+#include <ctime>
 #include <fstream>
 #include <memory>
 #include <sstream>
@@ -194,14 +196,31 @@ int cmd_latency(int argc, char** argv) {
   return 0;
 }
 
+std::string utc_text(std::int64_t ms) {
+  const std::time_t t = static_cast<std::time_t>(ms / 1000);
+  std::tm tm{};
+  gmtime_r(&t, &tm);
+  char b[32];
+  std::strftime(b, sizeof b, "%Y-%m-%dT%H:%M:%SZ", &tm);
+  return b;
+}
+
 // Lossless and traceable, checked rather than assumed: every normalised field
 // must be a view into its own raw line (so it can point at its bytes), and every
 // line must either be fully explained or carry its unexplained bytes.
+//
+// One clock, also checked: the lines of a capture arrive in time order, so once
+// eight vendors' clock conventions are undone, every line's UTC time must sit
+// within a minute of the lines before it. A vendor read in the wrong zone lands
+// hours away and is counted.
 int cmd_verify(int, char** argv) {
   const std::string buf = slurp(argv[2]);
   const auto lines = lines_of(buf);
   Event e;
   std::uint64_t fields = 0, outside = 0, unexplained_dropped = 0, complete = 0;
+  constexpr std::int64_t kTolMs = 60000;
+  std::uint64_t timed = 0, off_line = 0;
+  std::int64_t ref = 0, lo = INT64_MAX, hi = INT64_MIN;
   auto inside = [&](sv f) {
     if (f.empty()) return;
     ++fields;
@@ -220,12 +239,26 @@ int cmd_verify(int, char** argv) {
       inside(f);
     for (int i = 0; i < e.n_unmapped; ++i) inside(e.unmapped[i].val);
     if (!e.complete && e.rest.empty()) ++unexplained_dropped;
+    if (e.has_time) {
+      if (timed++ == 0) ref = e.time_ms;
+      if (e.time_ms < ref - kTolMs || e.time_ms > ref + kTolMs) {
+        ++off_line;
+      } else {
+        ref = std::max(ref, e.time_ms);
+        lo = std::min(lo, e.time_ms);
+        hi = std::max(hi, e.time_ms);
+      }
+    }
   }
   std::printf("lines %zu\n", lines.size());
   std::printf("fully parsed %llu (%.4f%%)\n", static_cast<unsigned long long>(complete), 100.0 * static_cast<double>(complete) / static_cast<double>(lines.size()));
   std::printf("field views checked %llu, pointing outside their raw line %llu\n", static_cast<unsigned long long>(fields), static_cast<unsigned long long>(outside));
   std::printf("lines with unexplained bytes not carried %llu\n", static_cast<unsigned long long>(unexplained_dropped));
-  return outside == 0 && unexplained_dropped == 0 ? 0 : 1;
+  std::printf("lines with a timestamp %llu, off the shared UTC time line by more than 60 s %llu\n",
+              static_cast<unsigned long long>(timed), static_cast<unsigned long long>(off_line));
+  if (timed > off_line)
+    std::printf("UTC time line %s to %s\n", utc_text(lo).c_str(), utc_text(hi).c_str());
+  return outside == 0 && unexplained_dropped == 0 && off_line == 0 ? 0 : 1;
 }
 
 }  // namespace
