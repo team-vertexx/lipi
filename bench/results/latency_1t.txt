@@ -1,0 +1,2 @@
+events 300000, per-event parse + normalise + OCSF JSON, one thread, nanoseconds
+p50 1965  p90 3555  p99 5723  p99.9 25395  max 1153074

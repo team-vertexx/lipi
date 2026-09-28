@@ -1,0 +1,16 @@
+lines        1000000 (411.0 MB)
+threads      1
+mode         parse + normalise
+best of 3    0.664 s
+events/s     1505807
+events/s/thread 1505807
+input MB/s   619.0
+fully parsed 100.0000% (1000000 of 1000000), unknown format 0
+  fortigate              219766
+  panos_traffic          180011
+  cisco_asa              179469
+  cef                    100109
+  pfsense_filterlog      100122
+  juniper_srx             99740
+  suricata_eve            70439
+  leef                    50344

@@ -1,0 +1,4 @@
+lines 1000000
+fully parsed 1000000 (100.0000%)
+field views checked 22052126, pointing outside their raw line 0
+lines with unexplained bytes not carried 0
